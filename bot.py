@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-TOKEN = "MTQ2MTAxMTA4MTI0MDc3MjY5OQ.G6e8oT.XvHRK6F9pEA6HTKg-wmXjspbr14zd51Y91_00Q"
+
 
 intents = discord.Intents.default()
 intents.message_content = True
