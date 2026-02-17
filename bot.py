@@ -40,7 +40,10 @@ async def on_ready():
     await bot.tree.sync()
     print(f"Conectado como {bot.user}")
 
-
+@bot.event
+async def on_ready():
+    print(f'--- BOT LIGADO: {bot.user} ---')
+    print('ESTOU VIVO E TENTANDO CARREGAR AS COGS!') # Adicione isso
 
 import os
 
