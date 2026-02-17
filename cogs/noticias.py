@@ -71,7 +71,7 @@ class Noticias(commands.Cog):
                 data = await resp.json()
                 print("--- [DETETIVE] Listando Botafogos encontrados: ---")
                 if not data.get('response'):
-                    print("--- [DETETIVE] Nenhum time encontrado. Verifique sua API KEY no Railway! ---")
+                    print(f"--- [DETETIVE] Resposta completa da API: {data} ---")
                 for item in data.get('response', []):
                     time = item['team']
                     print(f"ID: {time['id']} | Nome: {time['name']} | Cidade: {time['venue_city']}")
