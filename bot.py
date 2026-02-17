@@ -25,7 +25,7 @@ class FogaoBot(commands.Bot):
         await self.load_extension("cogs.atendimento")
         await self.load_extension("cogs.parcerias")
         await self.load_extension("cogs.xp")
-
+        await bot.load_extension("cogs.noticias")
 
         # 👇 REGISTRA A VIEW PERSISTENTE
         self.add_view(PainelAtendimento())
