@@ -2,6 +2,8 @@ import discord
 from discord.ext import commands
 import os
 from dotenv import load_dotenv
+import asyncio
+
 
 from cogs.atendimento import PainelAtendimento  # 👈 IMPORTANTE
 
@@ -30,9 +32,12 @@ class FogaoBot(commands.Bot):
 bot = FogaoBot()
 
 
+
 @bot.event
 async def on_ready():
     print(f"Conectado como {bot.user}")
+    while True:
+        await asyncio.sleep(3600)
 
 
 import os
