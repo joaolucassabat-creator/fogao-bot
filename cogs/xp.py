@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
+from discord import app_commands, Interaction
 import json
 import os
 import random
@@ -43,7 +43,6 @@ class XP(commands.Cog):
             json.dump(data, f, indent=4)
 
     def get_rank_info(self, xp):
-        """Retorna o nome do cargo baseado no XP atual"""
         current_rank = {"name": "Membro", "level": 0}
         for rank in self.rank_config:
             if xp >= rank["xp_needed"]:
@@ -63,50 +62,35 @@ class XP(commands.Cog):
         if user_id not in data:
             data[user_id] = {"xp": 0, "level": 0}
 
-        # Ganho de XP: entre 15 e 35 para tornar a jornada desafiadora
-        xp_gain = random.randint(15, 35)
-        data[user_id]["xp"] += xp_gain
-        
-        # Verificar se subiu de nível/cargo
+        data[user_id]["xp"] += random.randint(15, 35)
         current_xp = data[user_id]["xp"]
         rank_info = self.get_rank_info(current_xp)
         
-        if rank_info["level"] > data[user_id]["level"]:
+        if rank_info["level"] > data[user_id].get("level", 0):
             data[user_id]["level"] = rank_info["level"]
             await self.update_member_roles(message.author, rank_info["id"])
-            # Opcional: Enviar mensagem de parabenização
-            # await message.channel.send(f"🔥 **GLORIOSO!** {message.author.mention} subiu para o nível **{rank_info['name']}**!")
 
         self.save_data(data)
 
     async def update_member_roles(self, member, new_role_id):
-        """Dá o novo cargo e remove os outros cargos de nível que o bot gerencia"""
         new_role = member.guild.get_role(new_role_id)
-        if not new_role:
-            return
-
-        # Lista de todos os IDs de cargos de nível para limpeza
+        if not new_role: return
         all_rank_ids = [r["id"] for r in self.rank_config]
-        
-        # Remove cargos antigos
         roles_to_remove = [member.guild.get_role(rid) for rid in all_rank_ids if rid != new_role_id]
-        roles_to_remove = [r for r in roles_to_remove if r in member.roles]
-        
+        roles_to_remove = [r for r in roles_to_remove if r and r in member.roles]
         try:
-            if roles_to_remove:
-                await member.remove_roles(*roles_to_remove)
+            if roles_to_remove: await member.remove_roles(*roles_to_remove)
             await member.add_roles(new_role)
-        except Exception as e:
-            print(f"Erro ao atualizar cargos: {e}")
+        except: pass
 
-    async def get_avatar_image(self, member, size=120):
+    async def get_avatar_image(self, member, size=150):
         try:
-            url = member.display_avatar.url
             async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    avatar_bytes = await response.read()
+                async with session.get(str(member.display_avatar.url)) as resp:
+                    if resp.status == 200:
+                        avatar_bytes = await resp.read()
             avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
-            avatar = avatar.resize((size, size), Image.Resampling.LANCZOS)
+            avatar = avatar.resize((size, size), Image.LANCZOS)
             mask = Image.new("L", (size, size), 0)
             draw = ImageDraw.Draw(mask)
             draw.ellipse((0, 0, size, size), fill=255)
@@ -114,44 +98,38 @@ class XP(commands.Cog):
             output.paste(avatar, (0, 0), mask)
             return output
         except:
-            return Image.new("RGBA", (size, size), (50, 50, 50, 255))
+            return Image.new("RGBA", (size, size), (40, 40, 40, 255))
 
-@app_commands.command(name="rankserver", description="O Pódio Glorioso do Fogão")
-async def rankserver(self, interaction: discord.Interaction):
+    @app_commands.command(name="rankserver", description="O Pódio Glorioso do Fogão")
+    async def rankserver(self, interaction: Interaction):
         await interaction.response.defer()
         data = self.load_data()
         sorted_users = sorted(data.items(), key=lambda x: x[1]["xp"], reverse=True)
-        
         if not sorted_users:
             return await interaction.followup.send("Ranking vazio!")
 
-        # 1. Configurar o Canvas (Tamanho maior para mais detalhe)
         width, height = 1000, 600
-        # Criar um fundo com degradê estiloso (Preto para Cinza Chumbo)
-        base = Image.new("RGBA", (width, height), (10, 10, 10, 255))
+        base = Image.new("RGBA", (width, height), (5, 5, 5, 255))
         draw = ImageDraw.Draw(base)
 
-        # 2. Desenhar um brilho de fundo atrás do 1º lugar (Efeito de Holofote)
+        # Holofote central
         overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        overlay_draw = ImageDraw.Draw(overlay)
-        # Um círculo de luz branca bem suave no centro
-        overlay_draw.ellipse((300, 50, 700, 450), fill=(255, 255, 255, 20)) 
+        ImageDraw.Draw(overlay).ellipse((300, 50, 700, 450), fill=(255, 255, 255, 15)) 
         base = Image.alpha_composite(base, overlay)
         draw = ImageDraw.Draw(base)
 
         try:
-            fnt_name = ImageFont.truetype("arialbd.ttf", 28) # Negrito
+            fnt_name = ImageFont.truetype("arial.ttf", 28)
             fnt_xp = ImageFont.truetype("arial.ttf", 20)
-            fnt_rank = ImageFont.truetype("arialbi.ttf", 40) # Itálico e Negrito
+            fnt_rank = ImageFont.truetype("arial.ttf", 40)
         except:
             fnt_name = fnt_xp = fnt_rank = ImageFont.load_default()
 
-        # Configuração do Pódio Estilizado (FIFA Style)
-        # (index, x, y_topo, largura, altura, cor_da_borda)
+        # (index, x, y_top, w, h, border_color)
         podium_settings = [
-            (1, 100, 280, 240, 320, (192, 192, 192, 150)), # 2º Prata
-            (0, 380, 200, 240, 400, (255, 255, 255, 220)), # 1º Branco/Brilho
-            (2, 660, 330, 240, 270, (205, 127, 50, 150))   # 3º Bronze
+            (1, 80, 280, 260, 300, (192, 192, 192, 180)), # 2º Prata
+            (0, 370, 200, 260, 380, (255, 255, 255, 255)), # 1º Branco
+            (2, 660, 330, 260, 250, (205, 127, 50, 180))   # 3º Bronze
         ]
 
         for idx, x, y_top, w, h, b_color in podium_settings:
@@ -159,40 +137,27 @@ async def rankserver(self, interaction: discord.Interaction):
                 u_id, u_data = sorted_users[idx]
                 member = interaction.guild.get_member(int(u_id))
                 
-                # Criar o Card (Retângulo arredondado com transparência)
-                card_shape = [x, y_top, x + w, height - 20]
-                # Preenchimento do card (Efeito de vidro escuro)
-                draw.rounded_rectangle(card_shape, radius=20, fill=(30, 30, 30, 180), outline=b_color, width=3)
+                # Card Estilo FIFA
+                draw.rounded_rectangle([x, y_top, x + w, height - 20], radius=15, fill=(25, 25, 25, 200), outline=b_color, width=2)
 
-                # Foto do Jogador (Maior e com borda)
                 if member:
-                    avatar = await self.get_avatar_image(member, size=150)
-                    # Centralizar avatar no card
-                    base.paste(avatar, (x + (w//2 - 75), y_top - 80), avatar)
+                    avatar = await self.get_avatar_image(member, size=140)
+                    base.paste(avatar, (x + (w//2 - 70), y_top - 75), avatar)
+                    draw.text((x + 20, y_top + 80), member.display_name[:14].upper(), fill="white", font=fnt_name)
                     
-                    # Nome do "Craque"
-                    name = member.display_name[:12].upper()
-                    draw.text((x + 20, y_top + 80), name, fill="white", font=fnt_name)
-                    
-                    # Info do Cargo
-                    rank_info = self.get_rank_info(u_data['xp'])
-                    draw.text((x + 20, y_top + 115), f"LVL {u_data['level']} • {rank_info['name']}", fill=b_color, font=fnt_xp)
-                    
-                    # XP total
-                    draw.text((x + 20, y_top + 145), f"XP: {u_data['xp']:,}", fill=(200, 200, 200), font=fnt_xp)
+                    r_info = self.get_rank_info(u_data['xp'])
+                    draw.text((x + 20, y_top + 115), f"LVL {u_data['level']} • {r_info['name']}", fill=b_color, font=fnt_xp)
+                    draw.text((x + 20, y_top + 140), f"XP: {u_data['xp']:,}", fill=(180, 180, 180), font=fnt_xp)
 
-                # Número da posição gigante e estilizado no fundo do card
-                draw.text((x + w - 70, y_top + h - 130), f"{idx+1}", fill=(255, 255, 255, 30), font=fnt_rank)
+                draw.text((x + w - 60, y_top + h - 110), f"{idx+1}", fill=(255, 255, 255, 20), font=fnt_rank)
 
-        # Adicionar uma Estrela Solitária simbólica no canto (Usando caracteres ou desenho)
-        draw.text((width - 80, 20), "★", fill="white", font=fnt_rank)
+        draw.text((width - 60, 20), "★", fill="white", font=fnt_rank)
 
-        # Enviar imagem finalizada
         with io.BytesIO() as binary_img:
             base.save(binary_img, "PNG")
             binary_img.seek(0)
             await interaction.followup.send(file=discord.File(binary_img, "podium_pro.png"))
 
-
-async def setup(bot):
+# FORA DA CLASSE - ENCOSTADO NA PAREDE ESQUERDA
+async def setup(bot: commands.Bot):
     await bot.add_cog(XP(bot))
