@@ -65,9 +65,30 @@ class Noticias(commands.Cog):
             except Exception as e:
                 print(f"Erro ao postar notícia: {e}")
 
-    @verificar_jogos.before_loop
-    async def before_verificar(self):
-        await self.bot.wait_until_ready()
+@tasks.loop(minutes=1) # Curto para testar rápido
+async def verificar_jogos(self):
+        CANAL_ID = 1461311054368739464
+        canal = self.bot.get_channel(CANAL_ID)
+        
+        print(f"--- [DEBUG] Tentando contato com o canal {CANAL_ID} ---")
+        
+        if canal is None:
+            print(f"--- [DEBUG] O bot NÃO ENCONTROU o canal. Verifique se o ID está certo! ---")
+            # Tenta buscar o canal de outra forma se o get_channel falhar
+            try:
+                canal = await self.bot.fetch_channel(CANAL_ID)
+                print("--- [DEBUG] Canal encontrado usando fetch_channel! ---")
+            except:
+                print("--- [DEBUG] Falha total ao encontrar o canal. ---")
+                return
 
+        try:
+            await canal.send("🚨 **TESTE DE CONEXÃO DO BOT!** Se você está lendo isso, o bot tem permissão!")
+            print("--- [DEBUG] Mensagem de texto enviada! Partindo para a API... ---")
+        except Exception as e:
+            print(f"--- [DEBUG] O bot encontrou o canal mas NÃO CONSEGUIU enviar mensagem: {e} ---")
+            return
+
+        # ... (resto do código da API que já temos)
 async def setup(bot):
     await bot.add_cog(Noticias(bot))
