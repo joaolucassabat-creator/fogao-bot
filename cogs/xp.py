@@ -118,6 +118,40 @@ class XP(commands.Cog):
         await interaction.followup.send(embed=embed)
 
 
+@discord.app_commands.command(name="rankserver", description="Veja o ranking do servidor")
+async def rankserver(self, interaction: discord.Interaction):
+
+    await interaction.response.defer()
+
+    data = self.load_data()
+
+    if not data:
+        await interaction.followup.send("Ainda não há dados de XP.")
+        return
+
+    # Ordena por XP
+    ranking = sorted(data.items(), key=lambda x: x[1]["xp"], reverse=True)
+
+    embed = discord.Embed(
+        title="🏆 Ranking do Servidor",
+        color=discord.Color.dark_grey()
+    )
+
+    description = ""
+
+    for i, (user_id, info) in enumerate(ranking[:10], start=1):
+        member = interaction.guild.get_member(int(user_id))
+
+        if member:
+            description += f"**{i}º** - {member.mention} | Nível {info['level']} ({info['xp']} XP)\n"
+
+    embed.description = description
+
+    await interaction.followup.send(embed=embed)
+
+
+
+
 async def setup(bot):
     await bot.add_cog(XP(bot))
 
