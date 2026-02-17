@@ -12,11 +12,11 @@ class Noticias(commands.Cog):
     def cog_unload(self):
         self.verificar_jogos.cancel()
 
-    @tasks.loop(minutes=5) # Diminuí o tempo para o teste ser rápido
+    @tasks.loop(hours=24)
     async def verificar_jogos(self):
-        print("--- [DEBUG] Iniciando checagem de jogos ---")
-        CANAL_ID = 1461311054368739464 # <--- Verifique se esse ID está 100% certo
-        BOTAFOGO_ID = 120
+        # --- CONFIGURAÇÕES ---
+        CANAL_ID = 1461311054368739464 
+        BOTAFOGO_ID = 134  # ID oficial do Botafogo (RJ)
         API_KEY = os.getenv("FOOTBALL_API_KEY")
         
         headers = {
@@ -24,59 +24,47 @@ class Noticias(commands.Cog):
             "x-rapidapi-host": "v3.football.api-sports.io"
         }
         
+        # Pega o próximo jogo
         url = f"https://v3.football.api-sports.io/fixtures?team={BOTAFOGO_ID}&next=1"
         
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(url, headers=headers) as resp:
-                    print(f"--- [DEBUG] Status da API: {resp.status} ---")
-                    data = await resp.json()
-                    
-                    if not data.get('response'):
-                        print(f"--- [DEBUG] API não retornou jogos para o ID {BOTAFOGO_ID}. Verifique o ID. ---")
-                        return
-
-                    jogo = data['response'][0]
-                    home = jogo['teams']['home']['name']
-                    away = jogo['teams']['away']['name']
-                    print(f"--- [DEBUG] Jogo encontrado: {home} vs {away} ---")
-
-                    canal = self.bot.get_channel(CANAL_ID)
-                    if canal is None:
-                        print(f"--- [DEBUG] ERRO: Não encontrei o canal com ID {CANAL_ID}. O bot tem acesso a ele? ---")
-                        return
-
-                    # TESTE FORÇADO: Vamos mandar a mensagem sem nenhuma condição de data
-                    embed = discord.Embed(
-                        title="🔥 TESTE DE NOTÍCIA",
-                        description=f"Próximo Jogo: **{home} vs {away}**",
-                        color=0xFFFFFF
-                    )
-                    await canal.send(content="Teste de conexão do setorista!", embed=embed)
-                    print("--- [DEBUG] Mensagem enviada com sucesso! ---")
-
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get('response'):
+                            jogo = data['response'][0]
+                            
+                            # PARA O TESTE: Ignoramos a data e postamos o próximo jogo encontrado
+                            canal = self.bot.get_channel(CANAL_ID)
+                            if canal:
+                                home = jogo['teams']['home']['name']
+                                away = jogo['teams']['away']['name']
+                                estadio = jogo['fixture']['venue']['name']
+                                data_str = jogo['fixture']['date']
+                                data_obj = datetime.fromisoformat(data_str.replace('Z', '+00:00'))
+                                horario = data_obj.strftime("%H:%M")
+                                data_formatada = data_obj.strftime("%d/%02m")
+                                
+                                # Escudo do oponente
+                                escudo_op = jogo['teams']['away']['logo'] if jogo['teams']['home']['id'] == BOTAFOGO_ID else jogo['teams']['home']['logo']
+                                
+                                embed = discord.Embed(
+                                    title="🔥 PRÓXIMO JOGO DO GLORIOSO",
+                                    description=f"**{home} vs {away}**",
+                                    color=0x000000 # Preto
+                                )
+                                embed.add_field(name="📅 Data", value=data_formatada, inline=True)
+                                embed.add_field(name="🕒 Horário", value=horario, inline=True)
+                                embed.add_field(name="🏟️ Estádio", value=estadio, inline=False)
+                                embed.set_thumbnail(url=escudo_op)
+                                embed.set_author(name="Botafogo de Futebol e Regatas", icon_url="https://upload.wikimedia.org/wikipedia/commons/c/cb/Botafogo_de_Futebol_e_Regatas_logo.svg")
+                                embed.set_footer(text="Setorista Automático Fogão Zone")
+                                
+                                await canal.send(content="📢 **Atenção!** O próximo jogo já está marcado:", embed=embed)
             except Exception as e:
-                print(f"--- [DEBUG] ERRO CRÍTICO: {e} ---")
+                print(f"Erro ao postar notícia: {e}")
 
-    @tasks.loop(minutes=5)
-    async def verificar_jogos(self):
-        API_KEY = os.getenv("FOOTBALL_API_KEY")
-        headers = {"x-rapidapi-key": API_KEY, "x-rapidapi-host": "v3.football.api-sports.io"}
-        
-        # BUSCA TODOS OS TIMES COM NOME BOTAFOGO NO BRASIL
-        url = "https://v3.football.api-sports.io/teams?search=Botafogo&country=Brazil"
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as resp:
-                data = await resp.json()
-                print("--- [DETETIVE] Listando Botafogos encontrados: ---")
-                if not data.get('response'):
-                    print(f"--- [DETETIVE] Resposta completa da API: {data} ---")
-                for item in data.get('response', []):
-                    time = item['team']
-                    print(f"ID: {time['id']} | Nome: {time['name']} | Cidade: {time['venue_city']}")
-
-    # AQUI ESTÁ O JEITO CERTO DO BEFORE_LOOP:
     @verificar_jogos.before_loop
     async def before_verificar(self):
         await self.bot.wait_until_ready()
