@@ -24,6 +24,8 @@ class FogaoBot(commands.Bot):
     async def setup_hook(self):
         await self.load_extension("cogs.atendimento")
         await self.load_extension("cogs.parcerias")
+        await self.load_extension("cogs.xp")
+
 
         # 👇 REGISTRA A VIEW PERSISTENTE
         self.add_view(PainelAtendimento())
@@ -35,9 +37,9 @@ bot = FogaoBot()
 
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     print(f"Conectado como {bot.user}")
-    while True:
-        await asyncio.sleep(3600)
+
 
 
 import os
