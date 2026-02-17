@@ -58,6 +58,25 @@ class Noticias(commands.Cog):
             except Exception as e:
                 print(f"--- [DEBUG] ERRO CRÍTICO: {e} ---")
 
+    @tasks.loop(minutes=5)
+    async def verificar_jogos(self):
+        API_KEY = os.getenv("FOOTBALL_API_KEY")
+        headers = {"x-rapidapi-key": API_KEY, "x-rapidapi-host": "v3.football.api-sports.io"}
+        
+        # BUSCA TODOS OS TIMES COM NOME BOTAFOGO NO BRASIL
+        url = "https://v3.football.api-sports.io/teams?search=Botafogo&country=Brazil"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as resp:
+                data = await resp.json()
+                print("--- [DETETIVE] Listando Botafogos encontrados: ---")
+                if not data.get('response'):
+                    print("--- [DETETIVE] Nenhum time encontrado. Verifique sua API KEY no Railway! ---")
+                for item in data.get('response', []):
+                    time = item['team']
+                    print(f"ID: {time['id']} | Nome: {time['name']} | Cidade: {time['venue_city']}")
+
+    # AQUI ESTÁ O JEITO CERTO DO BEFORE_LOOP:
     @verificar_jogos.before_loop
     async def before_verificar(self):
         await self.bot.wait_until_ready()
