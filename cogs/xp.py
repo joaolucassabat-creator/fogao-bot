@@ -158,6 +158,82 @@ class XP(commands.Cog):
             binary_img.seek(0)
             await interaction.followup.send(file=discord.File(binary_img, "podium_pro.png"))
 
+
+    @app_commands.command(name="rank", description="Veja seu nível e progresso no Fogão Zone")
+    async def rank(self, interaction: Interaction, membro: discord.Member = None):
+        await interaction.response.defer()
+        
+        target = membro or interaction.user
+        data = self.load_data()
+        user_id = str(target.id)
+        
+        user_data = data.get(user_id, {"xp": 0, "level": 0})
+        current_xp = user_data["xp"]
+        
+        # Descobrir cargo atual e próximo nível
+        current_rank = self.get_rank_info(current_xp)
+        next_rank = None
+        for r in self.rank_config:
+            if r["xp_needed"] > current_xp:
+                next_rank = r
+                break
+        
+        # Design do Card
+        width, height = 600, 250
+        base = Image.new("RGBA", (width, height), (10, 10, 10, 255))
+        draw = ImageDraw.Draw(base)
+        
+        # Borda arredondada do Card
+        draw.rounded_rectangle([10, 10, width-10, height-10], radius=20, fill=(25, 25, 25, 255), outline="white", width=2)
+        
+        try:
+            fnt_name = ImageFont.truetype("arial.ttf", 30)
+            fnt_info = ImageFont.truetype("arial.ttf", 20)
+        except:
+            fnt_name = fnt_info = ImageFont.load_default()
+            
+        # Avatar
+        avatar = await self.get_avatar_image(target, size=120)
+        base.paste(avatar, (30, 40), avatar)
+        
+        # Nome e Cargo
+        draw.text((170, 45), target.display_name.upper(), fill="white", font=fnt_name)
+        draw.text((170, 85), f"CARGO: {current_rank['name']}", fill="#888888", font=fnt_info)
+        
+        # Lógica da Barra de Progresso
+        bar_x, bar_y, bar_w, bar_h = 170, 140, 380, 30
+        if next_rank:
+            # Calcula a porcentagem entre o nível atual e o próximo
+            prev_xp = 0
+            for r in self.rank_config:
+                if r["xp_needed"] < next_rank["xp_needed"]:
+                    prev_xp = r["xp_needed"]
+            
+            needed_in_level = next_rank["xp_needed"] - prev_xp
+            user_in_level = current_xp - prev_xp
+            percentage = min(user_in_level / needed_in_level, 1.0)
+            
+            # Desenha fundo da barra
+            draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], radius=15, fill=(50, 50, 50, 255))
+            # Desenha o progresso (Branco Botafogo)
+            draw.rounded_rectangle([bar_x, bar_y, bar_x + (bar_w * percentage), bar_y + bar_h], radius=15, fill="white")
+            
+            xp_falta = next_rank["xp_needed"] - current_xp
+            draw.text((bar_x, bar_y + 40), f"Faltam {xp_falta:,} XP para {next_rank['name']}", fill="#bbbbbb", font=fnt_info)
+        else:
+            # Caso o cara seja Nível Máximo (Imortal)
+            draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], radius=15, fill="white")
+            draw.text((bar_x, bar_y + 40), "VOCÊ ATINGIU O TOPO: IMORTAL!", fill="#FFD700", font=fnt_info)
+
+        # XP Total no canto
+        draw.text((width - 150, 45), f"LVL {user_data.get('level', 0)}", fill="white", font=fnt_info)
+        draw.text((width - 150, 75), f"{current_xp:,} XP", fill="#888888", font=fnt_info)
+
+        with io.BytesIO() as binary_img:
+            base.save(binary_img, "PNG")
+            binary_img.seek(0)
+            await interaction.followup.send(file=discord.File(binary_img, "rank.png"))
+
 # FORA DA CLASSE - ENCOSTADO NA PAREDE ESQUERDA
 async def setup(bot: commands.Bot):
     await bot.add_cog(XP(bot))
