@@ -24,7 +24,11 @@ LEVEL_ROLES = {
 
 
 def calculate_level(xp):
-    return int(xp ** 0.5)
+    level = 0
+    while xp >= (100 * (level + 1)):
+        level += 1
+    return level
+
 
 
 class XP(commands.Cog):
