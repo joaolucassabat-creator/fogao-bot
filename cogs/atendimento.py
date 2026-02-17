@@ -74,6 +74,7 @@ class PainelAtendimento(discord.ui.View):
         placeholder="Selecione uma opção de atendimento",
         min_values=1,
         max_values=1,
+        custom_id="painel_atendimento_select",  # 👈 ADICIONE ISSO
         options=[
             discord.SelectOption(label="Dúvidas Gerais", value="Dúvidas Gerais", emoji="❓"),
             discord.SelectOption(label="Denúncias", value="Denúncias", emoji="🚨"),
@@ -83,7 +84,8 @@ class PainelAtendimento(discord.ui.View):
             discord.SelectOption(label="Patrocinar, parceria ou serviços", value="Parcerias", emoji="🤝"),
             discord.SelectOption(label="Minha opção não se encontra aqui", value="Outros", emoji="📌"),
         ]
-    )
+)
+
     async def select_callback(
         self,
         interaction: discord.Interaction,
