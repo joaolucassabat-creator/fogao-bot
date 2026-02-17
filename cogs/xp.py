@@ -116,68 +116,83 @@ class XP(commands.Cog):
         except:
             return Image.new("RGBA", (size, size), (50, 50, 50, 255))
 
-    @app_commands.command(name="rankserver", description="O Pódio Glorioso do Fogão")
-    async def rankserver(self, interaction: discord.Interaction):
+@app_commands.command(name="rankserver", description="O Pódio Glorioso do Fogão")
+async def rankserver(self, interaction: discord.Interaction):
         await interaction.response.defer()
         data = self.load_data()
         sorted_users = sorted(data.items(), key=lambda x: x[1]["xp"], reverse=True)
         
         if not sorted_users:
-            return await interaction.followup.send("Ninguém no ranking ainda!")
+            return await interaction.followup.send("Ranking vazio!")
 
-        width, height = 950, 550
-        img = Image.new("RGB", (width, height), "#050505") 
-        draw = ImageDraw.Draw(img)
-        
+        # 1. Configurar o Canvas (Tamanho maior para mais detalhe)
+        width, height = 1000, 600
+        # Criar um fundo com degradê estiloso (Preto para Cinza Chumbo)
+        base = Image.new("RGBA", (width, height), (10, 10, 10, 255))
+        draw = ImageDraw.Draw(base)
+
+        # 2. Desenhar um brilho de fundo atrás do 1º lugar (Efeito de Holofote)
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
+        # Um círculo de luz branca bem suave no centro
+        overlay_draw.ellipse((300, 50, 700, 450), fill=(255, 255, 255, 20)) 
+        base = Image.alpha_composite(base, overlay)
+        draw = ImageDraw.Draw(base)
+
         try:
-            fnt_big = ImageFont.truetype("arial.ttf", 35)
-            fnt_med = ImageFont.truetype("arial.ttf", 22)
-            fnt_small = ImageFont.truetype("arial.ttf", 16)
+            fnt_name = ImageFont.truetype("arialbd.ttf", 28) # Negrito
+            fnt_xp = ImageFont.truetype("arial.ttf", 20)
+            fnt_rank = ImageFont.truetype("arialbi.ttf", 40) # Itálico e Negrito
         except:
-            fnt_big = fnt_med = fnt_small = ImageFont.load_default()
+            fnt_name = fnt_xp = fnt_rank = ImageFont.load_default()
 
-        # Pódio (2º, 1º, 3º)
-        podium_config = [
-            (1, 80, 220, "#C0C0C0"),  # 2º Prata
-            (0, 350, 300, "#FFFFFF"), # 1º Branco (Botafogo)
-            (2, 620, 170, "#CD7F32")  # 3º Bronze
+        # Configuração do Pódio Estilizado (FIFA Style)
+        # (index, x, y_topo, largura, altura, cor_da_borda)
+        podium_settings = [
+            (1, 100, 280, 240, 320, (192, 192, 192, 150)), # 2º Prata
+            (0, 380, 200, 240, 400, (255, 255, 255, 220)), # 1º Branco/Brilho
+            (2, 660, 330, 240, 270, (205, 127, 50, 150))   # 3º Bronze
         ]
 
-        for rank_idx, x_pos, p_height, color in podium_config:
-            if rank_idx < len(sorted_users):
-                u_id, u_data = sorted_users[rank_idx]
+        for idx, x, y_top, w, h, b_color in podium_settings:
+            if idx < len(sorted_users):
+                u_id, u_data = sorted_users[idx]
                 member = interaction.guild.get_member(int(u_id))
-                name = member.display_name if member else f"User {rank_idx+1}"
                 
-                # Pedestal
-                draw.rectangle([x_pos, height - p_height, x_pos + 220, height], fill=color)
-                draw.text((x_pos + 90, height - p_height + 10), f"{rank_idx + 1}º", fill="black", font=fnt_big)
+                # Criar o Card (Retângulo arredondado com transparência)
+                card_shape = [x, y_top, x + w, height - 20]
+                # Preenchimento do card (Efeito de vidro escuro)
+                draw.rounded_rectangle(card_shape, radius=20, fill=(30, 30, 30, 180), outline=b_color, width=3)
 
-                # Avatar
+                # Foto do Jogador (Maior e com borda)
                 if member:
-                    avatar = await self.get_avatar_image(member, size=140)
-                    img.paste(avatar, (x_pos + 40, height - p_height - 160), avatar)
-                
-                # Título do Cargo Alvinegro
-                rank_info = self.get_rank_info(u_data['xp'])
-                draw.text((x_pos + 20, height - p_height - 220), name[:15], fill="white", font=fnt_med)
-                draw.text((x_pos + 20, height - p_height - 195), f"LVL {u_data['level']} - {rank_info['name']}", fill="#888888", font=fnt_small)
+                    avatar = await self.get_avatar_image(member, size=150)
+                    # Centralizar avatar no card
+                    base.paste(avatar, (x + (w//2 - 75), y_top - 80), avatar)
+                    
+                    # Nome do "Craque"
+                    name = member.display_name[:12].upper()
+                    draw.text((x + 20, y_top + 80), name, fill="white", font=fnt_name)
+                    
+                    # Info do Cargo
+                    rank_info = self.get_rank_info(u_data['xp'])
+                    draw.text((x + 20, y_top + 115), f"LVL {u_data['level']} • {rank_info['name']}", fill=b_color, font=fnt_xp)
+                    
+                    # XP total
+                    draw.text((x + 20, y_top + 145), f"XP: {u_data['xp']:,}", fill=(200, 200, 200), font=fnt_xp)
 
-        # Barra lateral Top 4-10
-        draw.text((810, 30), "TOP 10", fill="white", font=fnt_med)
-        for i in range(3, min(10, len(sorted_users))):
-            u_id, u_data = sorted_users[i]
-            member = interaction.guild.get_member(int(u_id))
-            name = (member.display_name[:10] + "..") if member else u_id[:10]
-            draw.text((810, 80 + (i-3)*45), f"{i+1}º {name}\nXP: {u_data['xp']}", fill="#bbbbbb", font=fnt_small)
+                # Número da posição gigante e estilizado no fundo do card
+                draw.text((x + w - 70, y_top + h - 130), f"{idx+1}", fill=(255, 255, 255, 30), font=fnt_rank)
 
-        # Moldura simples
-        draw.rectangle([5, 5, width-5, height-5], outline="white", width=3)
+        # Adicionar uma Estrela Solitária simbólica no canto (Usando caracteres ou desenho)
+        draw.text((width - 80, 20), "★", fill="white", font=fnt_rank)
 
+        # Enviar imagem finalizada
         with io.BytesIO() as binary_img:
-            img.save(binary_img, "PNG")
+            base.save(binary_img, "PNG")
             binary_img.seek(0)
-            await interaction.followup.send(file=discord.File(binary_img, "podium_fogao.png"))
+            await interaction.followup.send(file=discord.File(binary_img, "podium_pro.png"))
+
 
 async def setup(bot):
     await bot.add_cog(XP(bot))
