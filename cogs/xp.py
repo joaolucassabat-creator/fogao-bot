@@ -1,16 +1,19 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, Interaction
-import json
 import os
 import random
 from PIL import Image, ImageDraw, ImageFont
 import aiohttp
 import io
+import psycopg2 # Adicionado para o Banco de Dados
+from psycopg2.extras import RealDictCursor
 
 class XP(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.db_url = os.getenv("DATABASE_URL") # Variável do Railway
+        
         # Configuração Oficial: XP Necessário e ID do Cargo
         self.rank_config = [
             {"level": 1, "xp_needed": 500, "id": 1461307537725853696, "name": "Novato"},
@@ -29,21 +32,46 @@ class XP(commands.Cog):
             {"level": 14, "xp_needed": 1750000, "id": 1461310873837633761, "name": "Ícone"},
             {"level": 15, "xp_needed": 2000000, "id": 1461311054368739464, "name": "Imortal"},
         ]
-        
-        if not os.path.exists("xp.json"):
-            with open("xp.json", "w") as f:
-                json.dump({}, f)
+        self.init_db()
 
-    def load_data(self):
-        with open("xp.json", "r") as f:
-            return json.load(f)
+    def init_db(self):
+        """Cria a tabela no banco de dados do Railway se não existir"""
+        conn = psycopg2.connect(self.db_url)
+        cur = conn.cursor()
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS users_xp (
+                user_id BIGINT PRIMARY KEY,
+                xp INTEGER DEFAULT 0,
+                level INTEGER DEFAULT 0
+            )
+        ''')
+        conn.commit()
+        cur.close()
+        conn.close()
 
-    def save_data(self, data):
-        with open("xp.json", "w") as f:
-            json.dump(data, f, indent=4)
+    def get_user_data(self, user_id):
+        conn = psycopg2.connect(self.db_url)
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT xp, level FROM users_xp WHERE user_id = %s", (user_id,))
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        return result if result else {"xp": 0, "level": 0}
+
+    def save_user_data(self, user_id, xp, level):
+        conn = psycopg2.connect(self.db_url)
+        cur = conn.cursor()
+        cur.execute('''
+            INSERT INTO users_xp (user_id, xp, level)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET xp = %s, level = %s
+        ''', (user_id, xp, level, xp, level))
+        conn.commit()
+        cur.close()
+        conn.close()
 
     def get_rank_info(self, xp):
-        current_rank = {"name": "Membro", "level": 0}
+        current_rank = {"name": "Membro", "level": 0, "id": None}
         for rank in self.rank_config:
             if xp >= rank["xp_needed"]:
                 current_rank = rank
@@ -56,21 +84,20 @@ class XP(commands.Cog):
         if message.author.bot or not message.guild:
             return
         
-        data = self.load_data()
-        user_id = str(message.author.id)
+        user_id = message.author.id
+        user_data = self.get_user_data(user_id)
 
-        if user_id not in data:
-            data[user_id] = {"xp": 0, "level": 0}
-
-        data[user_id]["xp"] += random.randint(15, 35)
-        current_xp = data[user_id]["xp"]
-        rank_info = self.get_rank_info(current_xp)
+        new_xp = user_data["xp"] + random.randint(15, 35)
+        rank_info = self.get_rank_info(new_xp)
         
-        if rank_info["level"] > data[user_id].get("level", 0):
-            data[user_id]["level"] = rank_info["level"]
-            await self.update_member_roles(message.author, rank_info["id"])
+        new_level = rank_info["level"]
+        
+        # Se upou de nível
+        if new_level > user_data["level"]:
+            if rank_info["id"]:
+                await self.update_member_roles(message.author, rank_info["id"])
 
-        self.save_data(data)
+        self.save_user_data(user_id, new_xp, new_level)
 
     async def update_member_roles(self, member, new_role_id):
         new_role = member.guild.get_role(new_role_id)
@@ -103,8 +130,14 @@ class XP(commands.Cog):
     @app_commands.command(name="rankserver", description="O Pódio Glorioso do Fogão")
     async def rankserver(self, interaction: Interaction):
         await interaction.response.defer()
-        data = self.load_data()
-        sorted_users = sorted(data.items(), key=lambda x: x[1]["xp"], reverse=True)
+        
+        conn = psycopg2.connect(self.db_url)
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT user_id, xp, level FROM users_xp ORDER BY xp DESC LIMIT 10")
+        sorted_users = cur.fetchall()
+        cur.close()
+        conn.close()
+
         if not sorted_users:
             return await interaction.followup.send("Ranking vazio!")
 
@@ -112,7 +145,6 @@ class XP(commands.Cog):
         base = Image.new("RGBA", (width, height), (5, 5, 5, 255))
         draw = ImageDraw.Draw(base)
 
-        # Holofote central
         overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         ImageDraw.Draw(overlay).ellipse((300, 50, 700, 450), fill=(255, 255, 255, 15)) 
         base = Image.alpha_composite(base, overlay)
@@ -125,7 +157,6 @@ class XP(commands.Cog):
         except:
             fnt_name = fnt_xp = fnt_rank = ImageFont.load_default()
 
-        # (index, x, y_top, w, h, border_color)
         podium_settings = [
             (1, 80, 280, 260, 300, (192, 192, 192, 180)), # 2º Prata
             (0, 370, 200, 260, 380, (255, 255, 255, 255)), # 1º Branco
@@ -134,10 +165,9 @@ class XP(commands.Cog):
 
         for idx, x, y_top, w, h, b_color in podium_settings:
             if idx < len(sorted_users):
-                u_id, u_data = sorted_users[idx]
-                member = interaction.guild.get_member(int(u_id))
+                u_data = sorted_users[idx]
+                member = interaction.guild.get_member(int(u_data['user_id']))
                 
-                # Card Estilo FIFA
                 draw.rounded_rectangle([x, y_top, x + w, height - 20], radius=15, fill=(25, 25, 25, 200), outline=b_color, width=2)
 
                 if member:
@@ -151,26 +181,19 @@ class XP(commands.Cog):
 
                 draw.text((x + w - 60, y_top + h - 110), f"{idx+1}", fill=(255, 255, 255, 20), font=fnt_rank)
 
-        draw.text((width - 60, 20), "★", fill="white", font=fnt_rank)
-
         with io.BytesIO() as binary_img:
             base.save(binary_img, "PNG")
             binary_img.seek(0)
             await interaction.followup.send(file=discord.File(binary_img, "podium_pro.png"))
-
 
     @app_commands.command(name="rank", description="Veja seu nível e progresso no Fogão Zone")
     async def rank(self, interaction: Interaction, membro: discord.Member = None):
         await interaction.response.defer()
         
         target = membro or interaction.user
-        data = self.load_data()
-        user_id = str(target.id)
-        
-        user_data = data.get(user_id, {"xp": 0, "level": 0})
+        user_data = self.get_user_data(target.id)
         current_xp = user_data["xp"]
         
-        # Descobrir cargo atual e próximo nível
         current_rank = self.get_rank_info(current_xp)
         next_rank = None
         for r in self.rank_config:
@@ -178,12 +201,9 @@ class XP(commands.Cog):
                 next_rank = r
                 break
         
-        # Design do Card
         width, height = 600, 250
         base = Image.new("RGBA", (width, height), (10, 10, 10, 255))
         draw = ImageDraw.Draw(base)
-        
-        # Borda arredondada do Card
         draw.rounded_rectangle([10, 10, width-10, height-10], radius=20, fill=(25, 25, 25, 255), outline="white", width=2)
         
         try:
@@ -192,18 +212,14 @@ class XP(commands.Cog):
         except:
             fnt_name = fnt_info = ImageFont.load_default()
             
-        # Avatar
         avatar = await self.get_avatar_image(target, size=120)
         base.paste(avatar, (30, 40), avatar)
         
-        # Nome e Cargo
         draw.text((170, 45), target.display_name.upper(), fill="white", font=fnt_name)
         draw.text((170, 85), f"CARGO: {current_rank['name']}", fill="#888888", font=fnt_info)
         
-        # Lógica da Barra de Progresso
         bar_x, bar_y, bar_w, bar_h = 170, 140, 380, 30
         if next_rank:
-            # Calcula a porcentagem entre o nível atual e o próximo
             prev_xp = 0
             for r in self.rank_config:
                 if r["xp_needed"] < next_rank["xp_needed"]:
@@ -211,22 +227,18 @@ class XP(commands.Cog):
             
             needed_in_level = next_rank["xp_needed"] - prev_xp
             user_in_level = current_xp - prev_xp
-            percentage = min(user_in_level / needed_in_level, 1.0)
+            percentage = max(0, min(user_in_level / needed_in_level, 1.0))
             
-            # Desenha fundo da barra
             draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], radius=15, fill=(50, 50, 50, 255))
-            # Desenha o progresso (Branco Botafogo)
             draw.rounded_rectangle([bar_x, bar_y, bar_x + (bar_w * percentage), bar_y + bar_h], radius=15, fill="white")
             
             xp_falta = next_rank["xp_needed"] - current_xp
             draw.text((bar_x, bar_y + 40), f"Faltam {xp_falta:,} XP para {next_rank['name']}", fill="#bbbbbb", font=fnt_info)
         else:
-            # Caso o cara seja Nível Máximo (Imortal)
             draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], radius=15, fill="white")
             draw.text((bar_x, bar_y + 40), "VOCÊ ATINGIU O TOPO: IMORTAL!", fill="#FFD700", font=fnt_info)
 
-        # XP Total no canto
-        draw.text((width - 150, 45), f"LVL {user_data.get('level', 0)}", fill="white", font=fnt_info)
+        draw.text((width - 150, 45), f"LVL {user_data['level']}", fill="white", font=fnt_info)
         draw.text((width - 150, 75), f"{current_xp:,} XP", fill="#888888", font=fnt_info)
 
         with io.BytesIO() as binary_img:
@@ -234,6 +246,5 @@ class XP(commands.Cog):
             binary_img.seek(0)
             await interaction.followup.send(file=discord.File(binary_img, "rank.png"))
 
-# FORA DA CLASSE - ENCOSTADO NA PAREDE ESQUERDA
 async def setup(bot: commands.Bot):
     await bot.add_cog(XP(bot))
