@@ -12,7 +12,11 @@ from psycopg2.extras import RealDictCursor
 class XP(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db_url = os.getenv("DATABASE_URL") # Variável do Railway
+        self.db_url = os.getenv("DATABASE_URL")
+        if not self.db_url:
+            print("❌ ERRO: A variável DATABASE_URL não foi encontrada!")
+        else:
+            self.init_db()
         
         # Configuração Oficial: XP Necessário e ID do Cargo
         self.rank_config = [

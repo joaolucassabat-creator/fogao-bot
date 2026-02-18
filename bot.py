@@ -26,7 +26,7 @@ class FogaoBot(commands.Bot):
         await self.load_extension("cogs.atendimento")
         await self.load_extension("cogs.parcerias")
         await self.load_extension("cogs.xp")
-        await self.load_extension("members.py")
+        await self.load_extension("cogs.members")
         
         try:
             await self.load_extension("cogs.noticias")
