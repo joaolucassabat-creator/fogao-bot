@@ -6,7 +6,6 @@ import asyncio
 # CONFIGURAÇÕES
 # =========================
 CANAL_PAINEL_ID = 1461419430335746240
-
 CANAL_SUGESTOES_ID = 1461419803024556044
 
 STAFF_ROLE_IDS = [
@@ -30,7 +29,6 @@ class TicketView(discord.ui.View):
 
     @discord.ui.button(label="🔒 Fechar Ticket", style=discord.ButtonStyle.gray, row=0)
     async def fechar(self, interaction: discord.Interaction, button: discord.ui.Button):
-
         if interaction.user.id != self.autor_id and not self.is_staff(interaction.user):
             await interaction.response.send_message(
                 "❌ Você não tem permissão para fechar este ticket.",
@@ -48,7 +46,6 @@ class TicketView(discord.ui.View):
 
     @discord.ui.button(label="🗑️ Excluir Ticket", style=discord.ButtonStyle.red, row=1)
     async def excluir(self, interaction: discord.Interaction, button: discord.ui.Button):
-
         if not self.is_staff(interaction.user):
             await interaction.response.send_message(
                 "❌ Apenas a staff pode excluir o ticket.",
@@ -59,12 +56,11 @@ class TicketView(discord.ui.View):
         await interaction.response.send_message(
             "🗑️ Ticket será excluído em 5 segundos..."
         )
-
         await asyncio.sleep(5)
         await interaction.channel.delete()
 
 # =========================
-# VIEW DO PAINEL
+# VIEW DO PAINEL (CORRIGIDA)
 # =========================
 class PainelAtendimento(discord.ui.View):
     def __init__(self):
@@ -74,7 +70,7 @@ class PainelAtendimento(discord.ui.View):
         placeholder="Selecione uma opção de atendimento",
         min_values=1,
         max_values=1,
-        custom_id="painel_atendimento_select",  # 👈 ADICIONE ISSO
+        custom_id="painel_atendimento_select",
         options=[
             discord.SelectOption(label="Dúvidas Gerais", value="Dúvidas Gerais", emoji="❓"),
             discord.SelectOption(label="Denúncias", value="Denúncias", emoji="🚨"),
@@ -84,110 +80,67 @@ class PainelAtendimento(discord.ui.View):
             discord.SelectOption(label="Patrocinar, parceria ou serviços", value="Parcerias", emoji="🤝"),
             discord.SelectOption(label="Minha opção não se encontra aqui", value="Outros", emoji="📌"),
         ]
-)
-
-    async def select_callback(
-        self,
-        interaction: discord.Interaction,
-        select: discord.ui.Select
-    ):
-        # responde rápido
+    )
+    async def callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+        # RESPONDE IMEDIATAMENTE PARA EVITAR "INTERAÇÃO FALHOU"
         await interaction.response.defer(ephemeral=True)
 
         guild = interaction.guild
         user = interaction.user
         escolha = select.values[0]
 
-        # =========================
-        # SUGESTÕES (NÃO CRIA TICKET)
-        # =========================
+        # SUGESTÕES
         if escolha == "Sugestões":
             canal = guild.get_channel(CANAL_SUGESTOES_ID)
-
-            if canal:
-                await interaction.followup.send(
-                    f"💡 Caso queira dar alguma sugestão, vá em {canal.mention}",
-                    ephemeral=True
-                )
-            else:
-                await interaction.followup.send(
-                    "💡 Caso queira dar alguma sugestão, vá no canal de sugestões.",
-                    ephemeral=True
-                )
+            mention = canal.mention if canal else "canal de sugestões"
+            await interaction.followup.send(f"💡 Caso queira dar alguma sugestão, vá em {mention}", ephemeral=True)
             return
 
-        # =========================
         # EVITA MÚLTIPLOS TICKETS
-        # =========================
         if discord.utils.get(guild.text_channels, name=f"ticket-{user.id}"):
-            await interaction.followup.send(
-                "❌ Você já possui um ticket aberto.",
-                ephemeral=True
-            )
+            await interaction.followup.send("❌ Você já possui um ticket aberto.", ephemeral=True)
             return
 
-        # =========================
         # CATEGORIA SUPORTE
-        # =========================
-        categoria = next(
-            (c for c in guild.categories if "SUPORTE" in c.name.upper()),
-            None
-        )
-
+        categoria = next((c for c in guild.categories if "SUPORTE" in c.name.upper()), None)
         if not categoria:
-            await interaction.followup.send(
-                "❌ Categoria SUPORTE não encontrada.",
-                ephemeral=True
-            )
+            await interaction.followup.send("❌ Categoria SUPORTE não encontrada no servidor.", ephemeral=True)
             return
 
-        # =========================
         # PERMISSÕES
-        # =========================
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            user: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True
-            )
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
         }
-
         for role_id in STAFF_ROLE_IDS:
             role = guild.get_role(role_id)
             if role:
-                overwrites[role] = discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    read_message_history=True
-                )
+                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
 
-        canal = await guild.create_text_channel(
-            name=f"ticket-{user.id}",
-            category=categoria,
-            overwrites=overwrites
-        )
+        # CRIAÇÃO DO CANAL
+        try:
+            canal = await guild.create_text_channel(
+                name=f"ticket-{user.id}",
+                category=categoria,
+                overwrites=overwrites
+            )
 
-        embed = discord.Embed(
-            title="📩 Ticket de Atendimento",
-            description=(
-                f"Olá {user.mention}, seu ticket foi criado.\n\n"
-                f"**Motivo:** {escolha}\n\n"
-                "Descreva sua solicitação com o máximo de detalhes."
-            ),
-            color=discord.Color.dark_grey()
-        )
+            embed = discord.Embed(
+                title="📩 Ticket de Atendimento",
+                description=(
+                    f"Olá {user.mention}, seu ticket foi criado.\n\n"
+                    f"**Motivo:** {escolha}\n\n"
+                    "Descreva sua solicitação com o máximo de detalhes."
+                ),
+                color=discord.Color.dark_grey()
+            )
 
-        await canal.send(
-            content=user.mention,
-            embed=embed,
-            view=TicketView(user.id)
-        )
-
-        await interaction.followup.send(
-            f"✅ Seu ticket foi criado: {canal.mention}",
-            ephemeral=True
-        )
+            await canal.send(content=user.mention, embed=embed, view=TicketView(user.id))
+            await interaction.followup.send(f"✅ Seu ticket foi criado: {canal.mention}", ephemeral=True)
+            
+        except Exception as e:
+            print(f"Erro ao criar canal: {e}")
+            await interaction.followup.send("❌ Ocorreu um erro ao tentar criar o canal do ticket.", ephemeral=True)
 
 # =========================
 # COG
@@ -199,8 +152,10 @@ class Atendimento(commands.Cog):
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def painel(self, ctx):
-
         canal = self.bot.get_channel(CANAL_PAINEL_ID)
+        if not canal:
+            await ctx.send("❌ Canal do painel não encontrado. Verifique o ID nas configurações.")
+            return
 
         embed = discord.Embed(
             title="📞 Central de Suporte",
@@ -210,12 +165,10 @@ class Atendimento(commands.Cog):
             ),
             color=discord.Color.dark_grey()
         )
-
-        embed.set_image(
-            url="https://media.discordapp.net/attachments/1389943081238925333/1468688412029489153/Painel_Atendimento_Fogao_Zone_6.png"
-        )
+        embed.set_image(url="https://media.discordapp.net/attachments/1389943081238925333/1468688412029489153/Painel_Atendimento_Fogao_Zone_6.png")
 
         await canal.send(embed=embed, view=PainelAtendimento())
+        await ctx.send("✅ Painel enviado com sucesso!", delete_after=5)
 
 async def setup(bot):
     await bot.add_cog(Atendimento(bot))
